@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -136,22 +138,73 @@ func argValue(a interface{}) interface{} {
 	return ret
 }
 
+// object pool for strings.Builder
+var stringBuilderPool sync.Pool
+
+func init() {
+	stringBuilderPool = sync.Pool{
+		New: func() interface{} {
+			var w strings.Builder
+			w.Grow(256)
+			return &w
+		},
+	}
+}
+
 func argsString(args ...interface{}) string {
-	var margs string
+	b := stringBuilderPool.Get().(*strings.Builder) // get string.Builder from pool
+	defer stringBuilderPool.Put(b)                  // release
+
 	for i, a := range args {
-		v := argValue(a)
-		switch v.(type) {
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteString(":")
+
+		switch v := a.(type) {
 		case string:
-			v = fmt.Sprintf("%q", v)
+			b.WriteString("\"")
+			b.WriteString(v)
+			b.WriteString("\"")
+		case *string:
+			b.WriteString("\"")
+			b.WriteString(*v)
+			b.WriteString("\"")
+		case bool:
+			b.WriteString(strconv.FormatBool(v))
+		case int:
+			b.WriteString(strconv.Itoa(v))
+		case int8:
+			b.WriteString(strconv.Itoa(int(v)))
+		case int16:
+			b.WriteString(strconv.Itoa(int(v)))
+		case int32:
+			b.WriteString(strconv.Itoa(int(v)))
+		case int64:
+			b.WriteString(strconv.Itoa(int(v)))
+		case uint:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case uint8:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case uint16:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case uint32:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case uint64:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case uintptr:
+			b.WriteString(strconv.FormatUint(uint64(v), 10))
+		case float32:
+			b.WriteString(strconv.FormatFloat(float64(v), 'f', -1, 32))
+		case float64:
+			b.WriteString(strconv.FormatFloat(float64(v), 'f', -1, 64))
 		default:
 			v = fmt.Sprintf("%v", v)
 		}
-		margs += fmt.Sprintf("%d:%s", i+1, v)
+
 		if i+1 < len(args) {
-			margs += " "
+			b.WriteString(" ")
 		}
 	}
-	return margs
+	return b.String()
 }
 
 // Calls the Exec function on the executor, but attempts to expand any eligible named
